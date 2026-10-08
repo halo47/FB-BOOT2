@@ -63,7 +63,7 @@ RAW_COOKIES = {
     'xs': '37%3ApMktrPzDUxZ0Pg%3A2%3A1791468174%3A-1%3A-1%3A%3AAczDe4Ipi9rD-13KBffVD2q3x6BzvYz7pX3IhpIDRw',
     'datr': 'hQCsampIyUzRj5uCsZ04s9k0',
     'sb': 'hQCsam5_7-7Zoh-teUkQzecx',
-    'fr': '1LXdYfxSJcInFOVkk.AWcSyghq4wz62Ep_tKwe5ZAMCXOUrNVYIznXbtxO7hQV8NuyygM.Bqx6KS..AAA.0.0.Bqx6KS.AWeC6J7sPyy2Xj7EbEi_wRR-gt0'
+    'fr': '1LXdYfxSJcInFOVkk.AWc_yRJDDT3zswM2VzbICwe7NlPa6QnjCjfQWFMntL6uO333-ik.Bqx6KS..AAA.0.0.Bqx6dC.AWc-oN87sOtMgAjbffpi2RB1eMg'
 }
 COOKIES = [{"name": k, "value": v, "domain": ".facebook.com", "path": "/"} for k, v in RAW_COOKIES.items()]
 
