@@ -473,6 +473,15 @@ async def comment_loop():
                             IS_PAUSED = True
                             break
 
+                        # --- فلتەری توند بۆ ڕێگریکردن لە لادان بۆ سەر پەیجی تر لە بۆتی دووەمیشدا ---
+                        base_target_identifier = url.split("?")[0].rstrip("/").split("/")[-1]
+                        current_page_url = page.url.split("?")[0].rstrip("/")
+                        
+                        if base_target_identifier and base_target_identifier not in current_page_url and "facebook.com" in current_page_url:
+                            print(f"[!] Redirected to another page/post. Skipping...", flush=True)
+                            CURRENT_STATUS_TEXT = "لادان لە پۆست، پۆرتەکە دەپەڕێنێت..."
+                            continue
+
                         try:
                             extracted = await page.evaluate('''() => {
                                 let el = document.querySelector('h3, h2, strong, a[role="link"] > span');
