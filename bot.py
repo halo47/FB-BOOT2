@@ -12,8 +12,9 @@ import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from playwright.async_api import async_playwright
 
-P1 = "8908163951"
-P2 = "AAFSjlKQBpXA7p7zRCWllbvoi6_Q5uqxlzA"
+# زانیارییە نوێیەکانی بۆتی تلیگرام
+P1 = "5434264507"
+P2 = "AAE8GJT5sKFojjNTBesMz7-y2waZu3M2ZfY"
 TG_BOT_TOKEN = f"{P1}:{P2}"
 TG_CHAT_ID = "1112648339"
 RENDER_URL = "https://fb-boot-2.onrender.com"
@@ -50,7 +51,7 @@ def save_count(c):
 
 TOTAL_COUNT = get_saved_count()
 
-# لینکە نوێیەکانی پۆستەکان
+# لینکی پۆستە نوێیەکان
 POST_URLS = [
     "https://www.facebook.com/share/r/19sVm3z97r/",
     "https://www.facebook.com/share/r/1C2PJknQah/",
