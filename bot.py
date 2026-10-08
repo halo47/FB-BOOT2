@@ -60,10 +60,10 @@ POST_URLS = [
 
 RAW_COOKIES = {
     'c_user': '100042058367978',
-    'xs': '1%3AW_y6zezPOsSGPg%3A2%3A1791460934%3A-1%3A-1%3A%3AAcx-EZ8KIhxA3jcObS1aUSsBjNjaxy7ybAMxZ2NrdQ',
+    'xs': '37%3ApMktrPzDUxZ0Pg%3A2%3A1791468174%3A-1%3A-1%3A%3AAczDe4Ipi9rD-13KBffVD2q3x6BzvYz7pX3IhpIDRw',
     'datr': 'hQCsampIyUzRj5uCsZ04s9k0',
     'sb': 'hQCsam5_7-7Zoh-teUkQzecx',
-    'fr': '18afc39V6gfdiOLO0.AWfFGevKxMbaKFMaybw9bAyUre6mkLD4eVxGYw0att78lyZKdds.Bqx4ZL..AAA.0.0.Bqx4ah.AWc3DAhcXfB2tHzPYnW1VjkldHA'
+    'fr': '1LXdYfxSJcInFOVkk.AWcSyghq4wz62Ep_tKwe5ZAMCXOUrNVYIznXbtxO7hQV8NuyygM.Bqx6KS..AAA.0.0.Bqx6KS.AWeC6J7sPyy2Xj7EbEi_wRR-gt0'
 }
 COOKIES = [{"name": k, "value": v, "domain": ".facebook.com", "path": "/"} for k, v in RAW_COOKIES.items()]
 
@@ -142,7 +142,7 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>لایڤی وێنەیی بۆتی ٢</title>
+                <title>لایڤی وێنەیی بۆتی دووەم</title>
                 <style>
                     body {{ background: #0f172a; color: #fff; font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 10px; }}
                     .card {{ max-width: 440px; margin: auto; background: #1e293b; border-radius: 16px; padding: 12px; }}
