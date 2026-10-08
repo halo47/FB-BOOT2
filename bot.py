@@ -32,6 +32,7 @@ DELAY_MAX = 35
 COMMENTS_PER_POST = 2
 
 COUNT_FILE = "count2.txt"
+COOKIES_FILE = "cookies2.json"
 
 def get_saved_count():
     if os.path.exists(COUNT_FILE):
@@ -51,21 +52,38 @@ def save_count(c):
 
 TOTAL_COUNT = get_saved_count()
 
+def load_cookies():
+    if os.path.exists(COOKIES_FILE):
+        try:
+            with open(COOKIES_FILE, "r") as f:
+                raw_data = json.load(f)
+                formatted = []
+                for item in raw_data:
+                    formatted.append({
+                        "name": item.get("name"),
+                        "value": item.get("value"),
+                        "domain": item.get("domain", ".facebook.com"),
+                        "path": item.get("path", "/")
+                    })
+                return formatted
+        except Exception as e:
+            print(f"[!] Cookie load error: {e}", flush=True)
+    
+    raw_def = {
+        'c_user': '100042058367978',
+        'xs': '37%3ApMktrPzDUxZ0Pg%3A2%3A1791468174%3A-1%3A-1%3A%3AAczDe4Ipi9rD-13KBffVD2q3x6BzvYz7pX3IhpIDRw',
+        'datr': 'hQCsampIyUzRj5uCsZ04s9k0',
+        'sb': 'hQCsam5_7-7Zoh-teUkQzecx',
+        'fr': '1LXdYfxSJcInFOVkk.AWc_yRJDDT3zswM2VzbICwe7NlPa6QnjCjfQWFMntL6uO333-ik.Bqx6KS..AAA.0.0.Bqx6dC.AWc-oN87sOtMgAjbffpi2RB1eMg'
+    }
+    return [{"name": k, "value": v, "domain": ".facebook.com", "path": "/"} for k, v in raw_def.items()]
+
 POST_URLS = [
     "https://www.facebook.com/share/r/19sVm3z97r/",
     "https://www.facebook.com/share/r/1C2PJknQah/",
     "https://www.facebook.com/share/v/19vkdUTsvm/",
     "https://www.facebook.com/share/r/18LGWD3VjQ/"
 ]
-
-RAW_COOKIES = {
-    'c_user': '100042058367978',
-    'xs': '37%3ApMktrPzDUxZ0Pg%3A2%3A1791468174%3A-1%3A-1%3A%3AAczDe4Ipi9rD-13KBffVD2q3x6BzvYz7pX3IhpIDRw',
-    'datr': 'hQCsampIyUzRj5uCsZ04s9k0',
-    'sb': 'hQCsam5_7-7Zoh-teUkQzecx',
-    'fr': '1LXdYfxSJcInFOVkk.AWc_yRJDDT3zswM2VzbICwe7NlPa6QnjCjfQWFMntL6uO333-ik.Bqx6KS..AAA.0.0.Bqx6dC.AWc-oN87sOtMgAjbffpi2RB1eMg'
-}
-COOKIES = [{"name": k, "value": v, "domain": ".facebook.com", "path": "/"} for k, v in RAW_COOKIES.items()]
 
 def send_telegram_msg(text, keyboard=None):
     try:
@@ -229,7 +247,16 @@ def run_server():
     server = HTTPServer(('0.0.0.0', 10000), UnifiedLiveHandler)
     server.serve_forever()
 
-def get_control_keyboard():
+def get_control_keyboard(view="main"):
+    if view == "settings":
+        return {
+            "inline_keyboard": [
+                [{"text": "📁 گۆڕینی کووکیز (فایل بنێرە)", "callback_data": "info_cookie"}],
+                [{"text": "✏️ گۆڕینی دەق (بنووسە text2:دەق)", "callback_data": "info_text"}],
+                [{"text": "🔙 گەڕانەوە بۆ سەرەکی", "callback_data": "main_menu"}]
+            ]
+        }
+
     pause_btn = "▶️ دەستپێکردنەوە" if IS_PAUSED else "⏸ ڕاگرتن"
     return {
         "inline_keyboard": [
@@ -246,13 +273,13 @@ def get_control_keyboard():
                 {"text": f"🔢 ڕێژە: {COMMENTS_PER_POST} بۆ پۆست", "callback_data": "cycle_limit"}
             ],
             [
-                {"text": "🔄 سفرکردنەوەی ژمێرەر", "callback_data": "reset_counter"},
-                {"text": "📊 نوێکردنەوەی پانێڵ", "callback_data": "refresh_panel"}
+                {"text": "⚙️ ڕێکخستنەکان (Settings)", "callback_data": "open_settings"},
+                {"text": "🔄 سفرکردنەوە", "callback_data": "reset_counter"}
             ]
         ]
     }
 
-def send_control_panel():
+def send_control_panel(view="main"):
     msg = (
         "🎛️ <b>پانێڵی بەڕێوەبردنی بۆتی دووەم:</b>\n\n"
         f"• دۆخی کارکردن: <b>{'وەستاوە ⏸' if IS_PAUSED else 'چالاکە 🟢'}</b>\n"
@@ -260,10 +287,9 @@ def send_control_panel():
         f"• خێرایی پشوو: <b>{SPEED_MODE}</b>\n"
         f"• ڕێژە بۆ پۆست: <b>{COMMENTS_PER_POST} کۆمێنت</b>\n"
         f"• دەقی چالاک: <code>{BASE_COMMENT_TEXT}</code>\n"
-        f"• دوایین بارودۆخ: <i>{CURRENT_STATUS_TEXT}</i>\n\n"
-        "<i>💡 بۆ گۆڕینی دەق، تەنها بنووسە:</i> <code>text2:دەقی نوێ</code>"
+        f"• دوایین بارودۆخ: <i>{CURRENT_STATUS_TEXT}</i>"
     )
-    send_telegram_msg(msg, get_control_keyboard())
+    send_telegram_msg(msg, get_control_keyboard(view))
 
 async def handle_update(update):
     global BASE_COMMENT_TEXT, IS_PAUSED, TOTAL_COUNT, SPEED_MODE, DELAY_MIN, DELAY_MAX, COMMENTS_PER_POST
@@ -276,7 +302,7 @@ async def handle_update(update):
         
         if data == "toggle_pause":
             IS_PAUSED = not IS_PAUSED
-            send_control_panel()
+            send_control_panel("main")
         elif data == "take_snapshot":
             if LATEST_FRAME_B64:
                 send_telegram_photo(LATEST_FRAME_B64, f"📸 دۆخی شاشەی بۆتی ٢ | کۆمێنت: #{TOTAL_COUNT}")
@@ -292,32 +318,64 @@ async def handle_update(update):
             else:
                 SPEED_MODE = "Safe (25-35s)"
                 DELAY_MIN, DELAY_MAX = 25, 35
-            send_control_panel()
+            send_control_panel("main")
         elif data == "cycle_limit":
             COMMENTS_PER_POST = 1 if COMMENTS_PER_POST >= 3 else COMMENTS_PER_POST + 1
-            send_control_panel()
+            send_control_panel("main")
         elif data == "reset_counter":
             TOTAL_COUNT = 0
             save_count(0)
             send_telegram_msg("🔄 ژمێرەری بۆتی دووەم بۆ سفر گەڕێندرایەوە.")
-            send_control_panel()
-        elif data == "refresh_panel":
-            send_control_panel()
+            send_control_panel("main")
+        elif data == "open_settings":
+            send_control_panel("settings")
+        elif data == "main_menu":
+            send_control_panel("main")
+        elif data == "info_cookie":
+            send_telegram_msg("💡 <b>گۆڕینی کووکیز:</b>\nتەنها فایلی `cookies2.json` ڕاستەوخۆ لێرەدا بار بکە و بینێرە؛ بۆتەکە خۆکارانە دەیخوێنێتەوە.")
+        elif data == "info_text":
+            send_telegram_msg("💡 <b>گۆڕینی دەق:</b>\nتەنها پەیامێک بنووسە بەم شێوازە:\n`text2:دەقی نوێی بۆتی دووەم`")
         return
 
     if "message" in update:
         msg = update["message"]
         if str(msg["from"]["id"]) != TG_CHAT_ID:
             return
+
+        if "document" in msg:
+            doc = msg["document"]
+            file_name = doc.get("file_name", "")
+            if "cookie" in file_name.lower() or file_name.endswith(".json"):
+                file_id = doc["file_id"]
+                try:
+                    get_file_url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/getFile?file_id={file_id}"
+                    req_f = urllib.request.Request(get_file_url)
+                    res_f = urllib.request.urlopen(req_f, timeout=10).read()
+                    f_info = json.loads(res_f.decode('utf-8'))
+                    if f_info.get("ok"):
+                        file_path = f_info["result"]["file_path"]
+                        download_url = f"https://api.telegram.org/file/bot{TG_BOT_TOKEN}/{file_path}"
+                        
+                        file_data = urllib.request.urlopen(urllib.request.Request(download_url), timeout=15).read()
+                        with open(COOKIES_FILE, "wb") as cf:
+                            cf.write(file_data)
+                        
+                        send_telegram_msg("✅ <b>فایلی کووکیزی بۆتی دووەم بە سەرکەوتوویی نوێکرایەوە!</b>")
+                        send_control_panel("main")
+                        return
+                except Exception as e:
+                    send_telegram_msg(f"❌ هەلە لە وەرگرتنی فایلی کووکیز: {e}")
+                    return
+
         text = msg.get("text", "").strip()
         if text.lower().startswith("text2:"):
             new_txt = text.split(":", 1)[1].strip()
             if new_txt:
                 BASE_COMMENT_TEXT = new_txt
                 send_telegram_msg(f"✅ دەقی بۆتی دووەم سەرکەوتووانە گۆڕدرا بۆ:\n<b>{BASE_COMMENT_TEXT}</b>")
-                send_control_panel()
+                send_control_panel("main")
         else:
-            send_control_panel()
+            send_control_panel("main")
 
 async def telegram_poller():
     offset = 0
@@ -349,7 +407,7 @@ async def self_ping():
 async def comment_loop():
     global TOTAL_COUNT, IS_PAUSED, BASE_COMMENT_TEXT, CURRENT_STATUS_TEXT, LATEST_FRAME_B64, CURRENT_PAGE
 
-    send_control_panel()
+    send_control_panel("main")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -370,12 +428,14 @@ async def comment_loop():
             try:
                 gc.collect()
 
+                cookies_list = load_cookies()
+
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36",
                     viewport={"width": 390, "height": 844}
                 )
                 await context.route("**/*.{mp4,mp3,avi,webm,woff,woff2,ttf,otf,png,svg}", lambda route: route.abort())
-                await context.add_cookies(COOKIES)
+                await context.add_cookies(cookies_list)
                 page = await context.new_page()
                 CURRENT_PAGE = page
 
@@ -402,7 +462,7 @@ async def comment_loop():
                                         break;
                                     }
                                 }
-                            }''')
+                            ''')
                             await asyncio.sleep(3)
                         except Exception as e:
                             print(f"[!] Fortsatt click error: {e}", flush=True)
