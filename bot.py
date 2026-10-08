@@ -192,6 +192,7 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
                     .tag {{ display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: bold; font-size: 13px; background: #38bdf8; color: #082f49; }}
                     .num {{ font-size: 45px; font-weight: 800; color: #38bdf8; margin: 15px 0 5px 0; }}
                     .status {{ background: #1e293b; padding: 12px; border-radius: 10px; font-size: 14px; margin-top: 15px; color: #94a3b8; line-height: 1.6; }}
+                    .btn {{ display: inline-block; margin-top: 15px; padding: 10px 20px; background: #38bdf8; color: #082f49; font-weight: bold; border-radius: 10px; text-decoration: none; }}
                 </style>
             </head>
             <body>
@@ -200,6 +201,7 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
                     <div class="num" id="total">#{TOTAL_COUNT}</div>
                     <div style="font-size: 13px; color: #64748b;">کۆی کۆمێنتەکان</div>
                     <div class="status" id="st">{CURRENT_STATUS_TEXT}</div>
+                    <a class="btn" href="/image">🖼️ بینینی لایڤی وێنەیی شاشە</a>
                 </div>
                 <script>
                     setInterval(async () => {{
