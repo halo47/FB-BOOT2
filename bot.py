@@ -473,7 +473,6 @@ async def comment_loop():
                             IS_PAUSED = True
                             break
 
-                        # لێرەدا تەنها ناوی پەیج یان پۆستەکە دەخوێنینەوە بێ ئەوەی ڕێگری لە کارکردن بکەین
                         try:
                             extracted = await page.evaluate('''() => {
                                 let el = document.querySelector('h3, h2, strong, a[role="link"] > span');
@@ -503,57 +502,29 @@ async def comment_loop():
 
                         CURRENT_STATUS_TEXT = f"کۆمێنت بۆ: {post_author} ({i+1}/{COMMENTS_PER_POST})"
                         try:
-                            comment_buttons = page.locator(
-                                'div[role="button"][aria-label*="Comment" i]:visible, '
-                                'div[role="button"][aria-label*="comment" i]:visible'
-                            )
-                            if await comment_buttons.count() == 0:
-                                comment_buttons = page.locator('div[role="button"]:visible').filter(has_text="Comment")
+                            cmt_btn = await page.query_selector('div[aria-label*="Comment" i], div[role="button"]:has-text("Comment")')
+                            if cmt_btn:
+                                await cmt_btn.click()
+                                await asyncio.sleep(1)
 
-                            if await comment_buttons.count() == 0:
-                                print(f"[!] No visible comment button on target post {p_index+1}", flush=True)
-                                break
+                            box = await page.wait_for_selector('textarea, input[type="text"], div[role="textbox"], [contenteditable="true"]', timeout=3000)
+                            if box:
+                                await box.fill(BASE_COMMENT_TEXT)
+                                await asyncio.sleep(0.4)
 
-                            cmt_btn = comment_buttons.last
-                            await cmt_btn.scroll_into_view_if_needed()
-                            await cmt_btn.click()
-                            await asyncio.sleep(1.2)
+                                await page.keyboard.press("Enter")
+                                await page.evaluate('''() => {
+                                    let btns = Array.from(document.querySelectorAll('div[role="button"], button'));
+                                    for (let b of btns) {
+                                        let l = (b.getAttribute('aria-label') || '').toLowerCase();
+                                        if (l.includes('send') || l.includes('post') || l.includes('comment') || l.includes('پۆست')) {
+                                            b.click();
+                                        }
+                                    }
+                                }''')
 
-                            boxes = page.locator(
-                                'textarea:visible, input[type="text"]:visible, '
-                                'div[role="textbox"]:visible, [contenteditable="true"]:visible'
-                            )
-                            if await boxes.count() == 0:
-                                print(f"[!] No visible comment box on target post {p_index+1}", flush=True)
-                                break
+                                await asyncio.sleep(2)
 
-                            box = boxes.last
-                            await box.scroll_into_view_if_needed()
-                            await box.click()
-                            await box.fill(BASE_COMMENT_TEXT)
-                            await asyncio.sleep(0.5)
-
-                            await box.press("Enter")
-                            await asyncio.sleep(2)
-
-                            submitted = True
-                            try:
-                                if await boxes.count():
-                                    active_value = await boxes.last.input_value(timeout=1000)
-                                    if active_value.strip():
-                                        submitted = False
-                            except Exception:
-                                try:
-                                    active_text = await boxes.last.inner_text(timeout=1000)
-                                    if BASE_COMMENT_TEXT.strip() in active_text:
-                                        submitted = False
-                                except Exception:
-                                    pass
-
-                            if not submitted:
-                                print(f"[!] Comment not confirmed on target post {p_index+1}; NOT counting.", flush=True)
-                                break
-                            else:
                                 TOTAL_COUNT += 1
                                 save_count(TOTAL_COUNT)
 
@@ -567,7 +538,9 @@ async def comment_loop():
                                 sleep_time = random.randint(DELAY_MIN, DELAY_MAX)
                                 CURRENT_STATUS_TEXT = f"کۆمێنت نێردرا ✅ (پشوو {sleep_time} چرکە)"
                                 await asyncio.sleep(sleep_time)
-
+                            else:
+                                print(f"[!] Box timeout on post {p_index+1}, skipping...", flush=True)
+                                break
                         except Exception as e:
                             print(f"[!] Comment error on post {p_index+1}: {e}", flush=True)
                             break
