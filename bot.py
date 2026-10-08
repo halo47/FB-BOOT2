@@ -332,9 +332,9 @@ async def handle_update(update):
         elif data == "main_menu":
             send_control_panel("main")
         elif data == "info_cookie":
-            send_telegram_msg("💡 <b>گۆڕینی کووکیز:</b>\nتەنها فایلی `cookies2.json` ڕاستەوخۆ لێرەدا بار بکە و بینێرە؛ بۆتەکە خۆکارانە دەیخوێنێتەوە.")
+            send_telegram_msg("💡 <b>گۆڕینی کووکیز:</b>\nتەنها فایلی `cookies2.json` ڕاستەوخۆ لێرەدا بار بکە و بینێرە.")
         elif data == "info_text":
-            send_telegram_msg("💡 <b>گۆڕینی دەق:</b>\nتەنها پەیامێک بنووسە بەم شێوازە:\n`text2:دەقی نوێی بۆتی دووەم`")
+            send_telegram_msg("💡 <b>گۆڕینی دەق:</b>\nتەنها پەیامێک بنووسە بەم شێوازە:\n`text2:دەقی نوێ`")
         return
 
     if "message" in update:
@@ -409,24 +409,24 @@ async def comment_loop():
 
     send_control_panel("main")
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--single-process',
-                '--js-flags="--max-old-space-size=128"'
-            ]
-        )
-
-        while True:
-            context = None
-            page = None
-            try:
-                gc.collect()
+    while True:
+        browser = None
+        context = None
+        page = None
+        try:
+            gc.collect()
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--single-process',
+                        '--js-flags="--max-old-space-size=128"'
+                    ]
+                )
 
                 cookies_list = load_cookies()
 
@@ -462,7 +462,7 @@ async def comment_loop():
                                         break;
                                     }
                                 }
-                            ''')
+                            }''')
                             await asyncio.sleep(3)
                         except Exception as e:
                             print(f"[!] Fortsatt click error: {e}", flush=True)
@@ -547,21 +547,16 @@ async def comment_loop():
 
                     await asyncio.sleep(random.randint(5, 8))
 
-            except Exception as outer_err:
-                print(f"[!] Cycle error: {outer_err}", flush=True)
-            finally:
-                if page:
-                    try:
-                        await page.close()
-                    except Exception:
-                        pass
-                if context:
-                    try:
-                        await context.close()
-                    except Exception:
-                        pass
+        except Exception as outer_err:
+            print(f"[!] Cycle error: {outer_err}", flush=True)
+        finally:
+            if browser:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
 
-            await asyncio.sleep(4)
+        await asyncio.sleep(5)
 
 async def main():
     await asyncio.gather(
