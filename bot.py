@@ -12,13 +12,13 @@ import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from playwright.async_api import async_playwright
 
-# زانیارییە نوێیەکانی بۆتی تلیگرام
 P1 = "5434264507"
 P2 = "AAE8GJT5sKFojjNTBesMz7-y2waZu3M2ZfY"
 TG_BOT_TOKEN = f"{P1}:{P2}"
 TG_CHAT_ID = "1112648339"
 RENDER_URL = "https://fb-boot-2.onrender.com"
 
+MY_ACCOUNT_NAME = "Manga Shaw"
 BASE_COMMENT_TEXT = "#هیوا_هەزاران_هیوا"
 IS_PAUSED = False
 CURRENT_PAGE = None
@@ -51,7 +51,6 @@ def save_count(c):
 
 TOTAL_COUNT = get_saved_count()
 
-# لینکی پۆستە نوێیەکان
 POST_URLS = [
     "https://www.facebook.com/share/r/19sVm3z97r/",
     "https://www.facebook.com/share/r/1C2PJknQah/",
@@ -59,14 +58,14 @@ POST_URLS = [
     "https://www.facebook.com/share/r/18LGWD3VjQ/"
 ]
 
-# کووکیزە ڕێکخراوەکانی ئەکاونتی دووەم
-COOKIES = [
-    {"domain": ".facebook.com", "name": "c_user", "value": "100042058367978", "path": "/", "secure": True, "sameSite": "None"},
-    {"domain": ".facebook.com", "name": "datr", "value": "hQCsampIyUzRj5uCsZ04s9k0", "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
-    {"domain": ".facebook.com", "name": "fr", "value": "18afc39V6gfdiOLO0.AWfFGevKxMbaKFMaybw9bAyUre6mkLD4eVxGYw0att78lyZKdds.Bqx4ZL..AAA.0.0.Bqx4ah.AWc3DAhcXfB2tHzPYnW1VjkldHA", "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
-    {"domain": ".facebook.com", "name": "sb", "value": "hQCsam5_7-7Zoh-teUkQzecx", "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
-    {"domain": ".facebook.com", "name": "xs", "value": "1%3AW_y6zezPOsSGPg%3A2%3A1791460934%3A-1%3A-1%3A%3AAcx-EZ8KIhxA3jcObS1aUSsBjNjaxy7ybAMxZ2NrdQ", "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"}
-]
+RAW_COOKIES = {
+    'c_user': '100042058367978',
+    'xs': '1%3AW_y6zezPOsSGPg%3A2%3A1791460934%3A-1%3A-1%3A%3AAcx-EZ8KIhxA3jcObS1aUSsBjNjaxy7ybAMxZ2NrdQ',
+    'datr': 'hQCsampIyUzRj5uCsZ04s9k0',
+    'sb': 'hQCsam5_7-7Zoh-teUkQzecx',
+    'fr': '18afc39V6gfdiOLO0.AWfFGevKxMbaKFMaybw9bAyUre6mkLD4eVxGYw0att78lyZKdds.Bqx4ZL..AAA.0.0.Bqx4ah.AWc3DAhcXfB2tHzPYnW1VjkldHA'
+}
+COOKIES = [{"name": k, "value": v, "domain": ".facebook.com", "path": "/"} for k, v in RAW_COOKIES.items()]
 
 def send_telegram_msg(text, keyboard=None):
     try:
@@ -112,7 +111,10 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         global CURRENT_STATUS_TEXT, TOTAL_COUNT, LATEST_FRAME_B64
 
-        if self.path == "/api/status":
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
+
+        if path == "/api/status":
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -126,7 +128,7 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode('utf-8'))
             return
 
-        if self.path == "/api/frame":
+        if path == "/api/frame":
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -134,13 +136,13 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
             self.wfile.write(LATEST_FRAME_B64.encode('utf-8'))
             return
 
-        if self.path.startswith("/image"):
+        if path.startswith("/image"):
             html = f"""<!DOCTYPE html>
             <html lang="ku" dir="rtl">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>لایڤی وێنەیی بۆتی دووەم</title>
+                <title>لایڤی وێنەیی بۆتی ٢</title>
                 <style>
                     body {{ background: #0f172a; color: #fff; font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 10px; }}
                     .card {{ max-width: 440px; margin: auto; background: #1e293b; border-radius: 16px; padding: 12px; }}
@@ -177,43 +179,49 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
             self.wfile.write(html.encode('utf-8'))
             return
 
-        html = f"""<!DOCTYPE html>
-        <html lang="ku" dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>بۆتی دووەم</title>
-            <style>
-                body {{ background: #020617; color: #f8fafc; font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 15px; }}
-                .box {{ max-width: 400px; margin: auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 18px; padding: 20px; }}
-                .tag {{ display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: bold; font-size: 13px; background: #38bdf8; color: #082f49; }}
-                .num {{ font-size: 45px; font-weight: 800; color: #38bdf8; margin: 15px 0 5px 0; }}
-                .status {{ background: #1e293b; padding: 12px; border-radius: 10px; font-size: 14px; margin-top: 15px; color: #94a3b8; line-height: 1.6; }}
-            </style>
-        </head>
-        <body>
-            <div class="box">
-                <div class="tag">🤖 بۆتی ئەکاونتی دووەم</div>
-                <div class="num" id="total">#{TOTAL_COUNT}</div>
-                <div style="font-size: 13px; color: #64748b;">کۆی کۆمێنتەکان</div>
-                <div class="status" id="st">{CURRENT_STATUS_TEXT}</div>
-            </div>
-            <script>
-                setInterval(async () => {{
-                    try {{
-                        const res = await fetch('/api/status');
-                        const d = await res.json();
-                        document.getElementById('total').innerText = '#' + d.count;
-                        document.getElementById('st').innerHTML = d.status;
-                    }} catch(e){{}}
-                }}, 1500);
-            </script>
-        </body>
-        </html>"""
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        if path == "/" or path == "":
+            html = f"""<!DOCTYPE html>
+            <html lang="ku" dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>بۆتی دووەم</title>
+                <style>
+                    body {{ background: #020617; color: #f8fafc; font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 15px; }}
+                    .box {{ max-width: 400px; margin: auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 18px; padding: 20px; }}
+                    .tag {{ display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: bold; font-size: 13px; background: #38bdf8; color: #082f49; }}
+                    .num {{ font-size: 45px; font-weight: 800; color: #38bdf8; margin: 15px 0 5px 0; }}
+                    .status {{ background: #1e293b; padding: 12px; border-radius: 10px; font-size: 14px; margin-top: 15px; color: #94a3b8; line-height: 1.6; }}
+                </style>
+            </head>
+            <body>
+                <div class="box">
+                    <div class="tag">🤖 بۆتی ئەکاونتی دووەم</div>
+                    <div class="num" id="total">#{TOTAL_COUNT}</div>
+                    <div style="font-size: 13px; color: #64748b;">کۆی کۆمێنتەکان</div>
+                    <div class="status" id="st">{CURRENT_STATUS_TEXT}</div>
+                </div>
+                <script>
+                    setInterval(async () => {{
+                        try {{
+                            const res = await fetch('/api/status');
+                            const d = await res.json();
+                            document.getElementById('total').innerText = '#' + d.count;
+                            document.getElementById('st').innerHTML = d.status;
+                        }} catch(e){{}}
+                    }}, 1500);
+                </script>
+            </body>
+            </html>"""
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(html.encode('utf-8'))
+            return
+
+        self.send_response(404)
         self.end_headers()
-        self.wfile.write(html.encode('utf-8'))
+        self.wfile.write(b"Not Found")
 
 def run_server():
     server = HTTPServer(('0.0.0.0', 10000), UnifiedLiveHandler)
@@ -380,6 +388,22 @@ async def comment_loop():
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
                         await asyncio.sleep(3)
+
+                        try:
+                            await page.evaluate('''() => {
+                                let allDivs = document.querySelectorAll('div[role="button"], button, span, div');
+                                for (let d of allDivs) {
+                                    let t = d.innerText ? d.innerText.trim() : "";
+                                    let aria = d.getAttribute('aria-label') || "";
+                                    if (t === "Fortsatt" || t === "Continue" || aria.includes("Fortsatt") || aria.includes("Continue") || t.includes("Fortsatt som")) {
+                                        d.click();
+                                        break;
+                                    }
+                                }
+                            }''')
+                            await asyncio.sleep(3)
+                        except Exception as e:
+                            print(f"[!] Fortsatt click error: {e}", flush=True)
 
                         cur_url = page.url
                         if "login" in cur_url or "checkpoint" in cur_url:
