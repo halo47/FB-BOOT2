@@ -16,7 +16,7 @@ P1 = "5434264507"
 P2 = "AAE8GJT5sKFojjNTBesMz7-y2waZu3M2ZfY"
 TG_BOT_TOKEN = f"{P1}:{P2}"
 TG_CHAT_ID = "1112648339"
-RENDER_URL = "https://fb-boot-2.onrender.com"
+RENDER_URL = "https://fb-boot2-1.onrender.com"
 
 MY_ACCOUNT_NAME = "Manga Shaw"
 BASE_COMMENT_TEXT = "#هیوا_هەزاران_هیوا"
