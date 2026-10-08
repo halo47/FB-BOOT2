@@ -85,53 +85,6 @@ POST_URLS = [
     "https://www.facebook.com/share/r/18LGWD3VjQ/"
 ]
 
-def normalize_fb_url(url):
-    try:
-        u = urllib.parse.urlparse(url)
-        host = u.netloc.lower().replace("www.", "")
-        path = u.path.rstrip("/") or "/"
-        return f"{host}{path}"
-    except Exception:
-        return ""
-
-async def validate_target_post(page, requested_url):
-    try:
-        current = page.url
-        current_key = normalize_fb_url(current)
-        if not current_key or "facebook.com" not in current_key:
-            return False, "URL ـی Facebook نییە"
-        if any(x in current.lower() for x in ["/login", "/checkpoint", "/recover", "/home.php"]):
-            return False, "Facebook پۆستی ئامانجی نەکردەوە"
-
-        identity = await page.evaluate('''() => {
-            const og = document.querySelector('meta[property="og:url"]')?.content || "";
-            const canonical = document.querySelector('link[rel="canonical"]')?.href || "";
-            return {og, canonical};
-        }''')
-        page_identity = normalize_fb_url(identity.get("og") or identity.get("canonical") or current)
-        if not page_identity:
-            return False, "ناسنامەی پۆست نەدۆزرایەوە"
-
-        bad_paths = ["/watch", "/stories", "/marketplace", "/groups/feed", "/home"]
-        if any(x in current.lower() for x in bad_paths) and "/posts/" not in current.lower():
-            return False, "پەڕەکە پۆستی تایبەتی نییە"
-
-        has_comment_surface = await page.evaluate('''() => {
-            const nodes = Array.from(document.querySelectorAll(
-                '[role="textbox"], textarea, input[type="text"], [contenteditable="true"]'
-            ));
-            return nodes.some(n => {
-                const r = n.getBoundingClientRect();
-                const s = getComputedStyle(n);
-                return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-            });
-        }''')
-        if not has_comment_surface:
-            return False, "comment composer ـی پۆست نەدۆزرایەوە"
-        return True, f"پۆستی ئامانج پشتڕاست کرایەوە: {page_identity}"
-    except Exception as e:
-        return False, f"پشکنینی پۆست شکستی هێنا: {e}"
-
 def send_telegram_msg(text, keyboard=None):
     try:
         url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
@@ -520,14 +473,7 @@ async def comment_loop():
                             IS_PAUSED = True
                             break
 
-                        target_ok, target_reason = await validate_target_post(page, url)
-                        if not target_ok:
-                            CURRENT_STATUS_TEXT = f"⛔ پۆستی ئامانج پشتڕاست نەکرا: {target_reason}"
-                            print(f"[!] Target validation failed for {url}: {target_reason}", flush=True)
-                            send_telegram_msg(f"⛔ <b>کۆمێنت نەکرا!</b>\nپۆستی ئامانج پشتڕاست نەکراوە.\n{target_reason}")
-                            continue
-                        print(f"[OK] {target_reason}", flush=True)
-
+                        # لێرەدا تەنها ناوی پەیج یان پۆستەکە دەخوێنینەوە بێ ئەوەی ڕێگری لە کارکردن بکەین
                         try:
                             extracted = await page.evaluate('''() => {
                                 let el = document.querySelector('h3, h2, strong, a[role="link"] > span');
