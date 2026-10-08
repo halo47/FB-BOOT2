@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: FB-BOOT
+    runtime: docker
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: PORT
+        value: 10000
+        
