@@ -85,6 +85,75 @@ POST_URLS = [
     "https://www.facebook.com/share/r/18LGWD3VjQ/"
 ]
 
+# Exact Facebook page/profile name for each target. Fill these in to enable strict name checking.
+EXPECTED_PAGE_NAMES = [
+    "Hiwa Dairy",
+    "Hiwa Dairy",
+    "Hiwa Dairy",
+    "Hiwa Dairy"
+]
+
+def normalize_fb_url(url):
+    try:
+        u = urllib.parse.urlparse(url)
+        host = u.netloc.lower().replace("www.", "")
+        path = u.path.rstrip("/") or "/"
+        return f"{host}{path}"
+    except Exception:
+        return ""
+
+async def extract_page_name(page):
+    try:
+        return await page.evaluate('''() => {
+            const clean = v => (v || '').replace(/\s+/g, ' ').trim();
+            const candidates = [];
+            const og = document.querySelector('meta[property="og:title"]')?.content;
+            if (og) candidates.push(clean(og));
+            for (const sel of ['h1','h2','h3','a[role="link"] strong','a[role="link"] span']) {
+                for (const el of document.querySelectorAll(sel)) {
+                    const t = clean(el.innerText || el.textContent);
+                    if (t && t.length >= 2 && t.length <= 120) candidates.push(t);
+                }
+            }
+            const bad = /^(comment|like|share|follow|following|message|send|home|watch|reels|marketplace|facebook|more|see more|پۆست|کۆمێنت|هاوبەشکردن|لایک|شوێنکەوتن)$/i;
+            return candidates.filter(x => !bad.test(x))[0] || '';
+        }''')
+    except Exception:
+        return ''
+
+async def validate_target_post(page, requested_url, expected_page_name=''):
+    try:
+        current = page.url
+        current_l = current.lower()
+        current_key = normalize_fb_url(current)
+        if not current_key or 'facebook.com' not in current_key:
+            return False, 'URL ـی Facebook نییە', ''
+        if any(x in current_l for x in ['/login','/checkpoint','/recover','/home.php']):
+            return False, 'Facebook پۆستی ئامانجی نەکردەوە', ''
+        identity = await page.evaluate('''() => ({
+            og: document.querySelector('meta[property="og:url"]')?.content || '',
+            canonical: document.querySelector('link[rel="canonical"]')?.href || ''
+        })''')
+        page_identity = normalize_fb_url(identity.get('og') or identity.get('canonical') or current)
+        if not page_identity:
+            return False, 'ناسنامەی پۆست نەدۆزرایەوە', ''
+        bad_paths = ['/watch','/stories','/marketplace','/groups/feed','/home']
+        if any(x in current_l for x in bad_paths) and '/posts/' not in current_l:
+            return False, 'پەڕەکە پۆستی تایبەتی نییە', ''
+        page_name = await extract_page_name(page)
+        if expected_page_name.strip():
+            expected = ' '.join(expected_page_name.split()).casefold()
+            actual = ' '.join(page_name.split()).casefold()
+            # Facebook may show the page as "Hiwa Dairy - ئەلبان هیوا" or just "Hiwa Dairy".
+            accepted = {expected, "hiwa dairy", "hiwa dairy - ئەلبان هیوا", "ئەلبان هیوا"}
+            if not actual:
+                return False, 'ناوی پەیج نەدۆزرایەوە؛ پۆست skip کرا', ''
+            if actual not in accepted and expected not in actual and actual not in expected:
+                return False, f'ناوی پەیج جیاوازە: چاوەڕوانکراو «{expected_page_name}»، دۆزرایەوە «{page_name}»', page_name
+        return True, f'پۆست OK ـە | پەیج: {page_name or "نەدۆزرایەوە"} | {page_identity}', page_name
+    except Exception as e:
+        return False, f'پشکنینی پۆست شکستی هێنا: {e}', ''
+
 def send_telegram_msg(text, keyboard=None):
     try:
         url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
@@ -473,18 +542,17 @@ async def comment_loop():
                             IS_PAUSED = True
                             break
 
-                        try:
-                            extracted = await page.evaluate('''() => {
-                                let el = document.querySelector('h3, h2, strong, a[role="link"] > span');
-                                if (el && el.innerText.trim().length > 1) {
-                                    return el.innerText.trim().split('\\n')[0];
-                                }
-                                return "";
-                            }''')
-                            if extracted and "browser" not in extracted.lower():
-                                post_author = extracted
-                        except Exception:
-                            pass
+                        # Fail closed: never comment unless the target resolves to a valid post surface.
+                        target_ok, target_reason, detected_page_name = await validate_target_post(page, url, EXPECTED_PAGE_NAMES[p_index])
+                        if not target_ok:
+                            CURRENT_STATUS_TEXT = f"⛔ پۆستی ئامانج پشتڕاست نەکرا: {target_reason}"
+                            print(f"[!] Target validation failed for {url}: {target_reason}", flush=True)
+                            send_telegram_msg(f"⛔ <b>کۆمێنت نەکرا!</b>\nپۆستی ئامانج پشتڕاست نەکراوە.\n{target_reason}")
+                            continue
+                        print(f"[OK] {target_reason}", flush=True)
+
+                        if detected_page_name:
+                            post_author = detected_page_name
 
                         try:
                             buf = await page.screenshot(quality=30, type="jpeg")
@@ -502,47 +570,60 @@ async def comment_loop():
 
                         CURRENT_STATUS_TEXT = f"کۆمێنت بۆ: {post_author} ({i+1}/{COMMENTS_PER_POST})"
                         try:
-                            cmt_btn = await page.query_selector('div[aria-label*="Comment" i], div[role="button"]:has-text("Comment")')
-                            if cmt_btn:
-                                await cmt_btn.click()
-                                await asyncio.sleep(1)
-
-                            box = await page.wait_for_selector('textarea, input[type="text"], div[role="textbox"], [contenteditable="true"]', timeout=3000)
-                            if box:
-                                await box.fill(BASE_COMMENT_TEXT)
-                                await asyncio.sleep(0.4)
-
-                                await page.keyboard.press("Enter")
-                                await page.evaluate('''() => {
-                                    let btns = Array.from(document.querySelectorAll('div[role="button"], button'));
-                                    for (let b of btns) {
-                                        let l = (b.getAttribute('aria-label') || '').toLowerCase();
-                                        if (l.includes('send') || l.includes('post') || l.includes('comment') || l.includes('پۆست')) {
-                                            b.click();
-                                        }
-                                    }
-                                }''')
-
-                                await asyncio.sleep(2)
-
-                                TOTAL_COUNT += 1
-                                save_count(TOTAL_COUNT)
-
-                                notify_msg = (
-                                    f"⚡ <b>بۆتی ٢: کۆمێنتی #{TOTAL_COUNT} بڵاوکرایەوە!</b>\n"
-                                    f"👤 پۆستی: <b>{post_author}</b>\n"
-                                    f"📍 پۆست: {p_index + 1}/4"
-                                )
-                                send_telegram_msg(notify_msg)
-
-                                sleep_time = random.randint(DELAY_MIN, DELAY_MAX)
-                                CURRENT_STATUS_TEXT = f"کۆمێنت نێردرا ✅ (پشوو {sleep_time} چرکە)"
-                                await asyncio.sleep(sleep_time)
-                            else:
-                                print(f"[!] Box timeout on post {p_index+1}, skipping...", flush=True)
+                            comment_buttons = page.locator(
+                                'div[role="button"][aria-label*="Comment" i]:visible, '
+                                'div[role="button"][aria-label*="comment" i]:visible'
+                            )
+                            if await comment_buttons.count() == 0:
+                                comment_buttons = page.locator('div[role="button"]:visible').filter(has_text="Comment")
+                            if await comment_buttons.count() == 0:
+                                send_telegram_msg(f"⚠️ کۆمێنت نەکرا: دوگمەی Comment بۆ پۆستی {p_index+1} نەدۆزرایەوە.")
                                 break
+                            cmt_btn = comment_buttons.last
+                            await cmt_btn.scroll_into_view_if_needed()
+                            await cmt_btn.click()
+                            await asyncio.sleep(1.2)
+                            boxes = page.locator(
+                                'textarea:visible, input[type="text"]:visible, '
+                                'div[role="textbox"]:visible, [contenteditable="true"]:visible'
+                            )
+                            if await boxes.count() == 0:
+                                send_telegram_msg(f"⚠️ کۆمێنت نەکرا: comment box لە پۆستی {p_index+1} نەکرایەوە.")
+                                break
+                            box = boxes.last
+                            await box.scroll_into_view_if_needed()
+                            await box.click()
+                            await box.fill(BASE_COMMENT_TEXT)
+                            await asyncio.sleep(0.5)
+                            await box.press("Enter")
+                            await asyncio.sleep(2)
+                            submitted = False
+                            try:
+                                active_value = await boxes.last.input_value(timeout=1000)
+                                submitted = not active_value.strip()
+                            except Exception:
+                                try:
+                                    active_text = await boxes.last.inner_text(timeout=1000)
+                                    submitted = BASE_COMMENT_TEXT.strip() not in active_text
+                                except Exception:
+                                    submitted = True
+                            if not submitted:
+                                send_telegram_msg(f"⚠️ کۆمێنت لە پۆستی {p_index+1} پشتڕاست نەکرایەوە؛ ژمێر نەزیادکرا.")
+                                break
+                            TOTAL_COUNT += 1
+                            save_count(TOTAL_COUNT)
+                            notify_msg = (
+                                f"⚡ <b>بۆتی ٢: کۆمێنتی #{TOTAL_COUNT} بڵاوکرایەوە!</b>\n"
+                                f"👤 پەیج: <b>{post_author}</b>\n"
+                                f"📍 پۆست: {p_index + 1}/4"
+                            )
+                            send_telegram_msg(notify_msg)
+                            sleep_time = random.randint(DELAY_MIN, DELAY_MAX)
+                            CURRENT_STATUS_TEXT = f"کۆمێنت نێردرا ✅ (پشوو {sleep_time} چرکە)"
+                            await asyncio.sleep(sleep_time)
                         except Exception as e:
                             print(f"[!] Comment error on post {p_index+1}: {e}", flush=True)
+                            send_telegram_msg(f"❌ هەلەی کۆمێنت لە پۆستی {p_index+1}: {e}")
                             break
 
                     await asyncio.sleep(random.randint(5, 8))
