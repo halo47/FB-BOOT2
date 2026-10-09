@@ -473,11 +473,6 @@ async def comment_loop():
                             IS_PAUSED = True
                             break
 
-                        # دڵنیابوونەوە لەوەی لەسەر فەیسبووکین و لادانی نەخواسترو ڕێگری لەوەی بڕواتە فیدی گشتی یان پەیجی تر
-                        if "facebook.com" not in cur_url or "home.php" in cur_url or "watch" in cur_url:
-                            print(f"[!] Redirected outside target post: {cur_url}", flush=True)
-                            continue
-
                         try:
                             extracted = await page.evaluate('''() => {
                                 let el = document.querySelector('h3, h2, strong, a[role="link"] > span');
@@ -504,11 +499,6 @@ async def comment_loop():
                     for i in range(COMMENTS_PER_POST):
                         while IS_PAUSED:
                             await asyncio.sleep(2)
-
-                        # دڵنیابوونەوەی خێرا پێش هەنگاوی کۆمێنت نووسین کە لینکی پەڕەکە هشتا لە دۆخێکی سەلامتدایە
-                        if "facebook.com" not in page.url or "watch" in page.url:
-                            print(f"[!] Drifted away from post before commenting. Skipping...", flush=True)
-                            break
 
                         CURRENT_STATUS_TEXT = f"کۆمێنت بۆ: {post_author} ({i+1}/{COMMENTS_PER_POST})"
                         try:
