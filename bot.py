@@ -4,14 +4,13 @@ import sys
 import gc
 import json
 import random
-import time
-import base64
 import threading
 import urllib.request
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from playwright.async_api import async_playwright
 
+# ==================== ڕێکخستنە سەرەکییەکان بۆتی دووەم ====================
 P1 = "5434264507"
 P2 = "AAE8GJT5sKFojjNTBesMz7-y2waZu3M2ZfY"
 TG_BOT_TOKEN = f"{P1}:{P2}"
@@ -23,12 +22,10 @@ BASE_COMMENT_TEXT = "#هیوا_هەزاران_هیوا"
 IS_PAUSED = False
 CURRENT_PAGE = None
 
-CURRENT_STATUS_TEXT = "لە دەستپێکردندایە..."
-LATEST_FRAME_B64 = ""
-
-SPEED_MODE = "Safe (25-35s)"
-DELAY_MIN = 22
-DELAY_MAX = 35
+# سیستەمی 90 چرکە بۆ پاراستنی ئەکاونت و گەیشتن بە 960 کۆمێنت
+SPEED_MODE = "Exact 960 Comments (90s)"
+DELAY_MIN = 90
+DELAY_MAX = 90
 COMMENTS_PER_POST = 2
 
 COUNT_FILE = "count2.txt"
@@ -95,106 +92,59 @@ def send_telegram_msg(text, keyboard=None):
         req = urllib.request.Request(url, data=data)
         urllib.request.urlopen(req, timeout=10)
     except Exception as e:
-        print(f"[!] Telegram Error: {e}", flush=True)
+        print(f"[!] Telegram Msg Error: {e}", flush=True)
 
-def send_telegram_photo(b64_str, caption=""):
+def send_telegram_file(file_path, caption=""):
     try:
-        img_bytes = base64.b64decode(b64_str)
-        boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
+        if not os.path.exists(file_path):
+            return
         url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendPhoto"
+        boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
+        body = bytearray()
+        body.extend(f'--{boundary}\r\n'.encode('utf-8'))
+        body.extend(f'Content-Disposition: form-data; name="chat_id"\r\n\r\n{TG_CHAT_ID}\r\n'.encode('utf-8'))
+        if caption:
+            body.extend(f'--{boundary}\r\n'.encode('utf-8'))
+            body.extend(f'Content-Disposition: form-data; name="caption"\r\n\r\n{caption}\r\n'.encode('utf-8'))
+            body.extend(f'--{boundary}\r\n'.encode('utf-8'))
+            body.extend(f'Content-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n'.encode('utf-8'))
         
-        body = [
-            f'--{boundary}'.encode('utf-8'),
-            b'Content-Disposition: form-data; name="chat_id"\r\n\r\n' + TG_CHAT_ID.encode('utf-8'),
-            f'--{boundary}'.encode('utf-8'),
-            b'Content-Disposition: form-data; name="caption"\r\n\r\n' + caption.encode('utf-8'),
-            f'--{boundary}'.encode('utf-8'),
-            b'Content-Disposition: form-data; name="photo"; filename="screen.jpg"\r\nContent-Type: image/jpeg\r\n\r\n',
-            img_bytes,
-            f'\r\n--{boundary}--\r\n'.encode('utf-8')
-        ]
-        
-        full_body = b''.join(body)
-        req = urllib.request.Request(url, data=full_body)
+        filename = os.path.basename(file_path)
+        body.extend(f'--{boundary}\r\n'.encode('utf-8'))
+        body.extend(f'Content-Disposition: form-data; name="photo"; filename="{filename}"\r\n'.encode('utf-8'))
+        body.extend(f'Content-Type: image/jpeg\r\n\r\n'.encode('utf-8'))
+        with open(file_path, 'rb') as f:
+            body.extend(f.read())
+        body.extend(f'\r\n--{boundary}--\r\n'.encode('utf-8'))
+
+        req = urllib.request.Request(url, data=bytes(body))
         req.add_header('Content-Type', f'multipart/form-data; boundary={boundary}')
-        urllib.request.urlopen(req, timeout=15)
+        urllib.request.urlopen(req, timeout=20)
     except Exception as e:
-        print(f"[!] Photo Send Error: {e}", flush=True)
+        print(f"[!] File Upload Error: {e}", flush=True)
 
-class UnifiedLiveHandler(BaseHTTPRequestHandler):
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
+class LiveStreamHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        global CURRENT_STATUS_TEXT, TOTAL_COUNT, LATEST_FRAME_B64
-
         parsed_path = urllib.parse.urlparse(self.path)
         path = parsed_path.path
 
-        if path == "/api/status":
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            data = {
-                "count": TOTAL_COUNT,
-                "status": CURRENT_STATUS_TEXT,
-                "paused": IS_PAUSED,
-                "has_image": bool(LATEST_FRAME_B64)
-            }
-            self.wfile.write(json.dumps(data).encode('utf-8'))
-            return
-
-        if path == "/api/frame":
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/plain')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(LATEST_FRAME_B64.encode('utf-8'))
-            return
-
-        if path.startswith("/image"):
-            html = f"""<!DOCTYPE html>
-            <html lang="ku" dir="rtl">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>لایڤی وێنەیی بۆتی دووەم</title>
-                <style>
-                    body {{ background: #0f172a; color: #fff; font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 10px; }}
-                    .card {{ max-width: 440px; margin: auto; background: #1e293b; border-radius: 16px; padding: 12px; }}
-                    .img-wrap {{ width: 100%; min-height: 400px; background: #020617; border-radius: 12px; display: flex; align-items: center; justify-content: center; }}
-                    img {{ width: 100%; height: auto; border-radius: 12px; display: block; }}
-                    .badge {{ display: inline-block; padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 13px; background: #38bdf8; color: #082f49; margin-bottom: 8px; }}
-                </style>
-            </head>
-            <body>
-                <div class="card">
-                    <div class="badge">🛡️ لایڤی وێنەیی بۆتی ٢</div>
-                    <div id="cnt" style="font-size: 16px; margin-bottom: 8px;">کۆمێنت: #{TOTAL_COUNT}</div>
-                    <div class="img-wrap">
-                        <img id="live" src="data:image/jpeg;base64,{LATEST_FRAME_B64}" alt="باردەکرێت...">
-                    </div>
-                </div>
-                <script>
-                    setInterval(async () => {{
-                        try {{
-                            const r = await fetch('/api/frame');
-                            const b64 = await r.text();
-                            if(b64) document.getElementById('live').src = 'data:image/jpeg;base64,' + b64;
-                            const s = await fetch('/api/status');
-                            const js = await s.json();
-                            document.getElementById('cnt').innerText = 'کۆمێنت: #' + js.count;
-                        }} catch(e){{}}
-                    }}, 2000);
-                </script>
-            </body>
-            </html>"""
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(html.encode('utf-8'))
+        if path == "/screen.jpg":
+            if os.path.exists("live2.jpg"):
+                try:
+                    with open("live2.jpg", "rb") as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/jpeg')
+                    self.send_header('Content-Length', str(len(content)))
+                    self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                    self.end_headers()
+                    self.wfile.write(content)
+                except Exception:
+                    self.send_response(500)
+                    self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
             return
 
         if path == "/" or path == "":
@@ -202,34 +152,35 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
             <html lang="ku" dir="rtl">
             <head>
                 <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>بۆتی دووەم</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                <title>لایڤی بۆتی دووەم</title>
                 <style>
-                    body {{ background: #020617; color: #f8fafc; font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 15px; }}
-                    .box {{ max-width: 400px; margin: auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 18px; padding: 20px; }}
-                    .tag {{ display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: bold; font-size: 13px; background: #38bdf8; color: #082f49; }}
-                    .num {{ font-size: 45px; font-weight: 800; color: #38bdf8; margin: 15px 0 5px 0; }}
-                    .status {{ background: #1e293b; padding: 12px; border-radius: 10px; font-size: 14px; margin-top: 15px; color: #94a3b8; line-height: 1.6; }}
-                    .btn {{ display: inline-block; margin-top: 15px; padding: 10px 20px; background: #38bdf8; color: #082f49; font-weight: bold; border-radius: 10px; text-decoration: none; }}
+                    * {{ box-sizing: border-box; }}
+                    body {{ background: #0f172a; color: #fff; font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 10px; }}
+                    .card {{ max-width: 420px; margin: auto; background: #1e293b; border-radius: 16px; padding: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }}
+                    .img-container {{ width: 100%; min-height: 480px; background: #0b0f19; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; }}
+                    img {{ width: 100%; height: auto; display: block; border-radius: 12px; }}
+                    .badge {{ display: inline-block; padding: 5px 14px; border-radius: 20px; font-weight: bold; font-size: 13px; margin-bottom: 8px; background: #38bdf8; color: #082f49; }}
                 </style>
             </head>
             <body>
-                <div class="box">
-                    <div class="tag">🤖 بۆتی ئەکاونتی دووەم</div>
-                    <div class="num" id="total">#{TOTAL_COUNT}</div>
-                    <div style="font-size: 13px; color: #64748b;">کۆی کۆمێنتەکان</div>
-                    <div class="status" id="st">{CURRENT_STATUS_TEXT}</div>
-                    <a class="btn" href="/image">🖼️ بینینی لایڤی وێنەیی شاشە</a>
+                <div class="card">
+                    <div class="badge">🔴 لایڤی بۆتی ٢</div>
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">کۆمێنتەکان: #{TOTAL_COUNT}</div>
+                    <div class="img-container">
+                        <img id="liveImg" src="/screen.jpg" alt="چاوەڕوان بە...">
+                    </div>
                 </div>
                 <script>
-                    setInterval(async () => {{
-                        try {{
-                            const res = await fetch('/api/status');
-                            const d = await res.json();
-                            document.getElementById('total').innerText = '#' + d.count;
-                            document.getElementById('st').innerHTML = d.status;
-                        }} catch(e){{}}
-                    }}, 1500);
+                    const img = document.getElementById('liveImg');
+                    function refreshImage() {{
+                        const newImg = new Image();
+                        newImg.onload = () => {{
+                            img.src = newImg.src;
+                        }};
+                        newImg.src = '/screen.jpg?t=' + Date.now();
+                    }}
+                    setInterval(refreshImage, 1200);
                 </script>
             </body>
             </html>"""
@@ -244,104 +195,87 @@ class UnifiedLiveHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Not Found")
 
 def run_server():
-    server = HTTPServer(('0.0.0.0', 10000), UnifiedLiveHandler)
+    server = HTTPServer(('0.0.0.0', 10000), LiveStreamHandler)
     server.serve_forever()
 
-def get_control_keyboard(view="main"):
-    if view == "settings":
-        return {
-            "inline_keyboard": [
-                [{"text": "📁 گۆڕینی کووکیز (فایل بنێرە)", "callback_data": "info_cookie"}],
-                [{"text": "✏️ گۆڕینی دەق (بنووسە text2:دەق)", "callback_data": "info_text"}],
-                [{"text": "🔙 گەڕانەوە بۆ سەرەکی", "callback_data": "main_menu"}]
-            ]
-        }
-
-    pause_btn = "▶️ دەستپێکردنەوە" if IS_PAUSED else "⏸ ڕاگرتن"
-    return {
+def send_control_panel():
+    global IS_PAUSED, BASE_COMMENT_TEXT, TOTAL_COUNT, SPEED_MODE, COMMENTS_PER_POST
+    pause_label = "▶️ دەستپێکردنەوە" if IS_PAUSED else "⏸ ڕاگرتنی بۆت"
+    keyboard = {
         "inline_keyboard": [
             [
-                {"text": "⚡ لایڤی دەق", "web_app": {"url": RENDER_URL}},
-                {"text": "🖼️ لایڤی وێنە", "web_app": {"url": f"{RENDER_URL}/image"}}
+                {"text": "🔴 شاشەی لایڤ (Web App)", "web_app": {"url": RENDER_URL}}
             ],
             [
-                {"text": pause_btn, "callback_data": "toggle_pause"},
-                {"text": "📸 وێنەی ئێستا (Snap)", "callback_data": "take_snapshot"}
+                {"text": pause_label, "callback_data": "cmd_toggle_pause"},
+                {"text": "📸 وێنەی ئێستا", "callback_data": "cmd_screenshot"}
             ],
             [
                 {"text": f"⏱️ خێرایی: {SPEED_MODE}", "callback_data": "cycle_speed"},
                 {"text": f"🔢 ڕێژە: {COMMENTS_PER_POST} بۆ پۆست", "callback_data": "cycle_limit"}
             ],
             [
-                {"text": "⚙️ ڕێکخستنەکان (Settings)", "callback_data": "open_settings"},
-                {"text": "🔄 سفرکردنەوە", "callback_data": "reset_counter"}
+                {"text": "📊 دۆخی گشتی", "callback_data": "cmd_status"}
             ]
         ]
     }
-
-def send_control_panel(view="main"):
     msg = (
-        "🎛️ <b>پانێڵی بەڕێوەبردنی بۆتی دووەم:</b>\n\n"
-        f"• دۆخی کارکردن: <b>{'وەستاوە ⏸' if IS_PAUSED else 'چالاکە 🟢'}</b>\n"
-        f"• کۆی کۆمێنتەکان: <b>#{TOTAL_COUNT}</b>\n"
-        f"• خێرایی پشوو: <b>{SPEED_MODE}</b>\n"
+        "🎛️ <b>کۆنتڕۆڵی بۆتی دووەم (سیستەمی ٩٦٠ کۆمێنت)</b>\n\n"
+        f"• ئەکاونت: <b>{MY_ACCOUNT_NAME}</b>\n"
+        f"• کۆی گشتیی کۆمێنت: <b>#{TOTAL_COUNT}</b>\n"
+        f"• دۆخ: <b>{'وەستاوە ⏸' if IS_PAUSED else 'چالاکە 🟢'}</b>\n"
+        f"• خێرایی ئێستا: <b>{SPEED_MODE}</b>\n"
         f"• ڕێژە بۆ پۆست: <b>{COMMENTS_PER_POST} کۆمێنت</b>\n"
-        f"• دەقی چالاک: <code>{BASE_COMMENT_TEXT}</code>\n"
-        f"• دوایین بارودۆخ: <i>{CURRENT_STATUS_TEXT}</i>"
+        f"• دەق: <code>{BASE_COMMENT_TEXT}</code>\n\n"
+        "💡 <i>بۆ گۆڕینی کووکیز، فایلی</i> <code>cookies2.json</code> <i>بینێرە. بۆ گۆڕینی دەق بنووسە text2:دەق</i>"
     )
-    send_telegram_msg(msg, get_control_keyboard(view))
+    send_telegram_msg(msg, keyboard)
 
 async def handle_update(update):
-    global BASE_COMMENT_TEXT, IS_PAUSED, TOTAL_COUNT, SPEED_MODE, DELAY_MIN, DELAY_MAX, COMMENTS_PER_POST
-    
+    global BASE_COMMENT_TEXT, IS_PAUSED, CURRENT_PAGE, TOTAL_COUNT, SPEED_MODE, DELAY_MIN, DELAY_MAX, COMMENTS_PER_POST
     if "callback_query" in update:
         cb = update["callback_query"]
         if str(cb["from"]["id"]) != TG_CHAT_ID:
             return
         data = cb.get("data")
         
-        if data == "toggle_pause":
+        if data == "cmd_screenshot":
+            if os.path.exists("live2.jpg"):
+                threading.Thread(target=send_telegram_file, args=("live2.jpg", f"📸 وێنەی ساتی بۆتی ٢ | #{TOTAL_COUNT}")).start()
+            elif CURRENT_PAGE:
+                try:
+                    await CURRENT_PAGE.screenshot(path="live2.jpg", quality=60, type="jpeg")
+                    threading.Thread(target=send_telegram_file, args=("live2.jpg", f"📸 وێنەی ساتی بۆتی ٢ | #{TOTAL_COUNT}")).start()
+                except Exception as e:
+                    send_telegram_msg(f"⚠️ هەڵە: {e}")
+            else:
+                send_telegram_msg("⚠️ براوزەر لەم چرکەیەدا ئامادە نییە.")
+        elif data == "cmd_status":
+            send_telegram_msg(f"📊 کۆی گشتیی کۆمێنتەکانی بۆتی ٢: #{TOTAL_COUNT}")
+        elif data == "cmd_toggle_pause":
             IS_PAUSED = not IS_PAUSED
-            send_control_panel("main")
-        elif data == "take_snapshot":
-            if LATEST_FRAME_B64:
-                send_telegram_photo(LATEST_FRAME_B64, f"📸 دۆخی شاشەی بۆتی ٢ | کۆمێنت: #{TOTAL_COUNT}")
-            else:
-                send_telegram_msg("⚠️ هێشتا هیچ دیمەنێکی شاشە بەردەست نییە.")
+            send_control_panel()
         elif data == "cycle_speed":
-            if "Safe" in SPEED_MODE:
-                SPEED_MODE = "Normal (15-22s)"
-                DELAY_MIN, DELAY_MAX = 15, 22
-            elif "Normal" in SPEED_MODE:
-                SPEED_MODE = "Fast (8-14s)"
-                DELAY_MIN, DELAY_MAX = 8, 14
+            if "960" in SPEED_MODE:
+                SPEED_MODE = "Balanced (60s)"
+                DELAY_MIN, DELAY_MAX = 60, 60
+            elif "Balanced" in SPEED_MODE:
+                SPEED_MODE = "Safe (120s)"
+                DELAY_MIN, DELAY_MAX = 120, 120
             else:
-                SPEED_MODE = "Safe (25-35s)"
-                DELAY_MIN, DELAY_MAX = 25, 35
-            send_control_panel("main")
+                SPEED_MODE = "Exact 960 Comments (90s)"
+                DELAY_MIN, DELAY_MAX = 90, 90
+            send_control_panel()
         elif data == "cycle_limit":
-            COMMENTS_PER_POST = 1 if COMMENTS_PER_POST >= 3 else COMMENTS_PER_POST + 1
-            send_control_panel("main")
-        elif data == "reset_counter":
-            TOTAL_COUNT = 0
-            save_count(0)
-            send_telegram_msg("🔄 ژمێرەری بۆتی دووەم بۆ سفر گەڕێندرایەوە.")
-            send_control_panel("main")
-        elif data == "open_settings":
-            send_control_panel("settings")
-        elif data == "main_menu":
-            send_control_panel("main")
-        elif data == "info_cookie":
-            send_telegram_msg("💡 <b>گۆڕینی کووکیز:</b>\nتەنها فایلی `cookies2.json` ڕاستەوخۆ لێرەدا بار بکە و بینێرە.")
-        elif data == "info_text":
-            send_telegram_msg("💡 <b>گۆڕینی دەق:</b>\nتەنها پەیامێک بنووسە بەم شێوازە:\n`text2:دەقی نوێ`")
+            COMMENTS_PER_POST = 1 if COMMENTS_PER_POST >= 4 else COMMENTS_PER_POST + 1
+            send_control_panel()
         return
 
     if "message" in update:
         msg = update["message"]
         if str(msg["from"]["id"]) != TG_CHAT_ID:
             return
-
+            
         if "document" in msg:
             doc = msg["document"]
             file_name = doc.get("file_name", "")
@@ -361,10 +295,10 @@ async def handle_update(update):
                             cf.write(file_data)
                         
                         send_telegram_msg("✅ <b>فایلی کووکیزی بۆتی دووەم بە سەرکەوتوویی نوێکرایەوە!</b>")
-                        send_control_panel("main")
+                        send_control_panel()
                         return
                 except Exception as e:
-                    send_telegram_msg(f"❌ هەلە لە وەرگرتنی فایلی کووکیز: {e}")
+                    send_telegram_msg(f"❌ هەڵە: {e}")
                     return
 
         text = msg.get("text", "").strip()
@@ -372,10 +306,10 @@ async def handle_update(update):
             new_txt = text.split(":", 1)[1].strip()
             if new_txt:
                 BASE_COMMENT_TEXT = new_txt
-                send_telegram_msg(f"✅ دەقی بۆتی دووەم سەرکەوتووانە گۆڕدرا بۆ:\n<b>{BASE_COMMENT_TEXT}</b>")
-                send_control_panel("main")
+                send_telegram_msg(f"✅ دەقی بۆتی دووەم نوێکرایەوە بۆ:\n<b>{BASE_COMMENT_TEXT}</b>")
+                send_control_panel()
         else:
-            send_control_panel("main")
+            send_control_panel()
 
 async def telegram_poller():
     offset = 0
@@ -394,130 +328,82 @@ async def telegram_poller():
             await asyncio.sleep(2)
         await asyncio.sleep(1)
 
-async def self_ping():
-    while True:
-        await asyncio.sleep(240)
-        try:
-            req = urllib.request.Request(RENDER_URL)
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=10))
-        except Exception:
-            pass
-
 async def comment_loop():
-    global TOTAL_COUNT, IS_PAUSED, BASE_COMMENT_TEXT, CURRENT_STATUS_TEXT, LATEST_FRAME_B64, CURRENT_PAGE
+    global CURRENT_PAGE, TOTAL_COUNT, IS_PAUSED, BASE_COMMENT_TEXT, DELAY_MIN, DELAY_MAX
 
-    send_control_panel("main")
+    send_control_panel()
 
-    while True:
-        browser = None
-        context = None
-        page = None
-        try:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--js-flags="--max-old-space-size=256"']
+        )
+
+        while True:
             gc.collect()
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--single-process',
-                        '--js-flags="--max-old-space-size=128"'
-                    ]
-                )
 
-                cookies_list = load_cookies()
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+                viewport={"width": 390, "height": 844}
+            )
+            await context.route("**/*.{mp4,mp3,avi,webm,woff,woff2,ttf,otf}", lambda route: route.abort())
+            
+            cookies_list = load_cookies()
+            await context.add_cookies(cookies_list)
+            
+            page = await context.new_page()
+            CURRENT_PAGE = page
 
-                context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36",
-                    viewport={"width": 390, "height": 844}
-                )
-                await context.route("**/*.{mp4,mp3,avi,webm,woff,woff2,ttf,otf,png,svg}", lambda route: route.abort())
-                await context.add_cookies(cookies_list)
-                page = await context.new_page()
-                CURRENT_PAGE = page
-
+            try:
                 for p_index, url in enumerate(POST_URLS):
                     while IS_PAUSED:
-                        CURRENT_STATUS_TEXT = "بۆتەکە وەستێنراوە ⏸"
-                        await asyncio.sleep(2)
-
-                    CURRENT_STATUS_TEXT = f"پشکنینی پۆستی {p_index + 1}/4..."
-                    post_author = f"پۆستی ژمارە {p_index + 1}"
+                        await asyncio.sleep(1)
 
                     try:
-                        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                        await asyncio.sleep(3)
-
-                        try:
-                            await page.evaluate('''() => {
-                                let allDivs = document.querySelectorAll('div[role="button"], button, span, div');
-                                for (let d of allDivs) {
-                                    let t = d.innerText ? d.innerText.trim() : "";
-                                    let aria = d.getAttribute('aria-label') || "";
-                                    if (t === "Fortsatt" || t === "Continue" || aria.includes("Fortsatt") || aria.includes("Continue") || t.includes("Fortsatt som")) {
-                                        d.click();
-                                        break;
-                                    }
-                                }
-                            }''')
-                            await asyncio.sleep(3)
-                        except Exception as e:
-                            print(f"[!] Fortsatt click error: {e}", flush=True)
-
-                        cur_url = page.url
-                        if "login" in cur_url or "checkpoint" in cur_url:
-                            send_telegram_msg("⚠️ <b>هۆشداری بۆتی دووەم:</b> کۆوکییەکان بەسەرچوون!")
-                            IS_PAUSED = True
-                            break
-
-                        try:
-                            extracted = await page.evaluate('''() => {
-                                let el = document.querySelector('h3, h2, strong, a[role="link"] > span');
-                                if (el && el.innerText.trim().length > 1) {
-                                    return el.innerText.trim().split('\\n')[0];
-                                }
-                                return "";
-                            }''')
-                            if extracted and "browser" not in extracted.lower():
-                                post_author = extracted
-                        except Exception:
-                            pass
-
-                        try:
-                            buf = await page.screenshot(quality=30, type="jpeg")
-                            LATEST_FRAME_B64 = base64.b64encode(buf).decode('utf-8')
-                        except Exception:
-                            pass
-
-                    except Exception as e:
-                        print(f"[!] Goto error on post {p_index+1}: {e}", flush=True)
+                        await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                        await asyncio.sleep(1.5)
+                        await page.screenshot(path="live2.jpg", quality=40, type="jpeg")
+                    except Exception:
                         continue
 
                     for i in range(COMMENTS_PER_POST):
                         while IS_PAUSED:
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1)
 
-                        CURRENT_STATUS_TEXT = f"کۆمێنت بۆ: {post_author} ({i+1}/{COMMENTS_PER_POST})"
                         try:
-                            cmt_btn = await page.query_selector('div[aria-label*="Comment" i], div[role="button"]:has-text("Comment")')
-                            if cmt_btn:
-                                await cmt_btn.click()
-                                await asyncio.sleep(1)
+                            clicked = await page.evaluate('''() => {
+                                let btns = Array.from(document.querySelectorAll('div[role="button"], span, a'));
+                                for (let b of btns) {
+                                    let t = b.innerText ? b.innerText.trim().toLowerCase() : "";
+                                    let aria = b.getAttribute('aria-label') ? b.getAttribute('aria-label').toLowerCase() : "";
+                                    if (aria.includes('comment') || t === 'comment' || t === 'کۆمێنت') {
+                                        b.click();
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }''')
+
+                            if not clicked:
+                                cmt_btn = await page.query_selector('div[aria-label*="Comment" i], div[role="button"]:has-text("Comment")')
+                                if cmt_btn:
+                                    await cmt_btn.click()
+
+                            await asyncio.sleep(0.5)
 
                             box = await page.wait_for_selector('textarea, input[type="text"], div[role="textbox"], [contenteditable="true"]', timeout=3000)
                             if box:
                                 await box.fill(BASE_COMMENT_TEXT)
-                                await asyncio.sleep(0.4)
+                                await asyncio.sleep(0.3)
 
-                                await page.keyboard.press("Enter")
+                                await box.press("Enter")
+                                
                                 await page.evaluate('''() => {
                                     let btns = Array.from(document.querySelectorAll('div[role="button"], button'));
                                     for (let b of btns) {
                                         let l = (b.getAttribute('aria-label') || '').toLowerCase();
-                                        if (l.includes('send') || l.includes('post') || l.includes('comment') || l.includes('پۆست')) {
+                                        let t = (b.innerText || '').toLowerCase();
+                                        if (l.includes('send') || l.includes('post') || l.includes('comment') || t.includes('ناردن') || t.includes('پۆست')) {
                                             b.click();
                                         }
                                     }
@@ -528,41 +414,34 @@ async def comment_loop():
                                 TOTAL_COUNT += 1
                                 save_count(TOTAL_COUNT)
 
-                                notify_msg = (
-                                    f"⚡ <b>بۆتی ٢: کۆمێنتی #{TOTAL_COUNT} بڵاوکرایەوە!</b>\n"
-                                    f"👤 پۆستی: <b>{post_author}</b>\n"
-                                    f"📍 پۆست: {p_index + 1}/4"
-                                )
-                                send_telegram_msg(notify_msg)
+                                try:
+                                    await page.screenshot(path="live2.jpg", quality=40, type="jpeg")
+                                except:
+                                    pass
 
-                                sleep_time = random.randint(DELAY_MIN, DELAY_MAX)
-                                CURRENT_STATUS_TEXT = f"کۆمێنت نێردرا ✅ (پشوو {sleep_time} چرکە)"
-                                await asyncio.sleep(sleep_time)
+                                send_telegram_msg(f"⚡ <b>بۆتی ٢: کۆمێنتی #{TOTAL_COUNT} بڵاوکرایەوە!</b>\nپۆست: {p_index + 1}/4")
+
+                                await asyncio.sleep(DELAY_MIN)
                             else:
-                                print(f"[!] Box timeout on post {p_index+1}, skipping...", flush=True)
                                 break
                         except Exception as e:
-                            print(f"[!] Comment error on post {p_index+1}: {e}", flush=True)
+                            print(f"[!] Error: {e}", flush=True)
                             break
 
-                    await asyncio.sleep(random.randint(5, 8))
-
-        except Exception as outer_err:
-            print(f"[!] Cycle error: {outer_err}", flush=True)
-        finally:
-            if browser:
+                    await asyncio.sleep(1.5)
+            finally:
                 try:
-                    await browser.close()
+                    await page.close()
+                    await context.close()
                 except Exception:
                     pass
 
-        await asyncio.sleep(5)
+            await asyncio.sleep(2)
 
 async def main():
     await asyncio.gather(
         comment_loop(),
-        telegram_poller(),
-        self_ping()
+        telegram_poller()
     )
 
 if __name__ == "__main__":
