@@ -24,8 +24,8 @@ CURRENT_PAGE = None
 
 # سیستەمی 90 چرکە بۆ پاراستنی ئەکاونت و گەیشتن بە 960 کۆمێنت
 SPEED_MODE = "Exact 960 Comments (90s)"
-DELAY_MIN = 20
-DELAY_MAX = 20
+DELAY_MIN = 40
+DELAY_MAX = 40
 COMMENTS_PER_POST = 2
 
 COUNT_FILE = "count2.txt"
